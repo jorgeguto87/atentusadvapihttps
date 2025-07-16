@@ -12,6 +12,7 @@ const axios = require('axios');
 const { exec } = require('child_process');
 const bcrypt = require('bcryptjs');
 
+
 const app = express();
 const PORT = 3080;
 
@@ -103,8 +104,28 @@ async function startClient() {
   client = new Client({
     authStrategy: new LocalAuth({ clientId: 'atentusadv' }),
     puppeteer: {
-      args: ['--no-sandbox', '--disable-setuid-sandbox']
-    }
+    headless: true,
+    args: [
+      '--no-sandbox',
+      '--disable-setuid-sandbox',
+      '--disable-dev-shm-usage',
+      '--disable-accelerated-2d-canvas',
+      '--disable-gpu',
+      '--no-zygote',
+      '--single-process',
+      '--disable-background-networking',
+      '--disable-background-timer-throttling',
+      '--disable-backgrounding-occluded-windows',
+      '--disable-client-side-phishing-detection',
+      '--disable-default-apps',
+      '--disable-extensions',
+      '--disable-sync',
+      '--metrics-recording-only',
+      '--mute-audio',
+      '--no-first-run',
+      '--safebrowsing-disable-auto-update'
+    ]
+  }
   });
 
   client.on('qr', async qr => {
@@ -576,18 +597,39 @@ app.post('/apagar-todos-anuncios', (req, res) => {
 
 //teste
 /*app.get('/testar-envio-agora', async (req, res) => {
-  const dia = new Date().getDay(); // dia atual
-  const hora = new Date().getHours(); // hora atual
+  const agora = new Date();
+  const hora = agora.getHours();
+  
+  function diaSemana() {
+    let day = agora.getDay();
+    if (hora >= 0 && hora <= 1) {
+      day = day - 1;
+      if (day < 0) {
+        day = 6;
+      }
+    }
+    return day;
+  }
+  
+  const dia = diaSemana();
+  console.log(`📆 Teste - Dia: ${dia} | Hora: ${hora}`);
+
+  if (dia === 0) {
+    return res.send('⛔ Domingo. Nenhum envio será feito.');
+  }
+
   const nomeImagemBase = imagemMap[dia];
   const nomeMensagem = diaMap[dia];
 
   if (!nomeImagemBase || !nomeMensagem) {
-    return res.send('❌ Dia inválido');
+    return res.send(`⚠️ Dia não mapeado corretamente: ${dia}`);
   }
 
   const mensagemMap = lerMensagensDataTxt();
+  console.log('📜 Mapa de mensagens:', mensagemMap);
+
   const texto = mensagemMap[nomeMensagem];
-  if (!texto) return res.send('❌ Texto não encontrado no data.txt');
+  console.log(`📄 Texto para ${nomeMensagem}:`, texto);
 
   const exts = ['.jpg', '.png'];
   let caminhoImagem = null;
@@ -600,20 +642,34 @@ app.post('/apagar-todos-anuncios', (req, res) => {
     }
   }
 
-  if (!caminhoImagem) return res.send('❌ Imagem não encontrada');
+  if (!caminhoImagem) {
+    console.log(`🖼️ Imagem não encontrada para ${nomeImagemBase}`);
+  } else {
+    console.log(`🖼️ Imagem encontrada: ${caminhoImagem}`);
+  }
+
+  if (!caminhoImagem || !texto) {
+    return res.send(`⚠️ Conteúdo incompleto para ${nomeMensagem.toUpperCase()}. Imagem ou texto ausente.`);
+  }
 
   try {
     const media = MessageMedia.fromFilePath(caminhoImagem);
     const grupos = lerGruposDestinatarios();
+    console.log(`📣 Enviando para grupos:, \n${grupos}`);
 
     for (const grupoId of grupos) {
-      await client.sendMessage(grupoId, media, { caption: texto });
-      console.log(`✅ Mensagem de teste enviada para ${grupoId}`);
+      try {
+        await client.sendMessage(grupoId, media, { caption: texto });
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        console.log(`✅ Mensagem de teste enviada para ${grupoId} (${nomeMensagem})`);
+      } catch (erroEnvio) {
+        console.error(`❌ Erro ao enviar para ${grupoId}:`, erroEnvio.message);
+      }
     }
 
-    res.send('✅ Teste de envio manual concluído.');
-  } catch (erro) {
-    console.error('❌ Erro no envio de teste:', erro);
+    res.send(`✅ Teste de envio manual concluído para ${nomeMensagem}.`);
+  } catch (erroGeral) {
+    console.error(`❌ Erro no processo de envio para ${nomeMensagem}:`, erroGeral.message);
     res.send('❌ Erro ao enviar mensagem de teste');
   }
 });
