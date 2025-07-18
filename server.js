@@ -14,7 +14,7 @@ const bcrypt = require('bcryptjs');
 
 
 const app = express();
-const PORT = 3080;
+const PORT = 3090;
 
 app.use(cors({
   origin: 'https://atentus.com.br',
@@ -194,7 +194,19 @@ function agendarEnvios() {
     console.log('🕒 Agendamento ativado!');
     const agora = new Date();
     const hora = agora.getHours();
-    const dia = agora.getDay(); // 0 = domingo
+    function diaSemana() {
+      let day = agora.getDay();
+      if (hora >= 0 && hora <= 1){
+        day = day - 1;
+        if (day < 0){
+          day = 6;
+        }
+      }else{
+        day = day;
+      }
+      return day;
+    }
+    const dia = diaSemana(); // 0 = domingo
 
     console.log(`📆 Dia: ${dia} | Hora: ${hora}`);
 
@@ -220,7 +232,7 @@ function agendarEnvios() {
     const nomeImagemBase = imagemMap[dia];
     const nomeMensagem = diaMap[dia];
 
-    if (!nomeImagemBase || !nomeMensagem) {
+        if (!nomeImagemBase || !nomeMensagem) {
       console.log('⚠️ Dia não mapeado corretamente:', dia);
       return;
     }
@@ -245,9 +257,9 @@ function agendarEnvios() {
     }
 
     if (!caminhoImagem) {
-      console.log(`🖼️ Imagem não encontrada para ${nomeImagemBase}`);
+      console.log(`🖼️ Imagem não encontrada para ${nomeImagemBase}` );
     } else {
-      console.log(`🖼️ Imagem encontrada: ${caminhoImagem}`);
+      console.log(`🖼️ Imagem encontrada: ${caminhoImagem}` );
     }
 
     if (!caminhoImagem || !texto) {
@@ -263,6 +275,7 @@ function agendarEnvios() {
       for (const grupoId of grupos) {
         try {
           await client.sendMessage(grupoId, media, { caption: texto });
+          await new Promise(resolve => setTimeout(resolve, 2000));
           console.log(`✅ Mensagem enviada para ${grupoId} (${nomeMensagem})`);
         } catch (erroEnvio) {
           console.error(`❌ Erro ao enviar para ${grupoId}:`, erroEnvio.message);
