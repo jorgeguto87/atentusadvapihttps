@@ -477,6 +477,33 @@ main #login{
         margin: auto;
 }
 
+.historico__container{
+        max-width: 35rem; /* 560px */
+        max-height: 25rem; /* 400px */
+        overflow-y: auto;
+        text-align: center;
+}
+
+.historico__container__linha{
+    display: flex;
+    align-items: center;
+    align-content: center;
+    flex-direction: row;
+}
+
+.menu__historico{
+    display: flex;
+    flex-direction:column;
+    align-items: center;
+    align-content: center;
+}
+
+.main__selection__btns__historico{
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    align-content: center;
+}
 @keyframes spin {
       0% { transform: rotate(0deg); }
       100% { transform: rotate(360deg); }

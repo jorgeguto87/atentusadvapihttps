@@ -22,7 +22,7 @@ function verificarAutenticacao() {
 // Função para fazer login (agora usando API)
 async function realizarLogin(username, password) {
   try {
-    const response = await fetch('https://atentus.com.br:3080/login', {
+    const response = await fetch('https://atentus.com.br:3090/login', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -65,7 +65,7 @@ async function realizarLogin(username, password) {
 async function realizarCadastroUsuario(login, senha, email) {
   
   try {
-    const response = await fetch('https://atentus.com.br:3080/cadastrar', {
+    const response = await fetch('https://atentus.com.br:3090/cadastrar', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -156,7 +156,7 @@ if (pagina !== 'sair') {
   // Debug: verificar se o arquivo existe
   console.log(`Tentando carregar: pages/${pagina}.html`);
   
-  fetch(`https://atentus.com.br:3080/pages/${pagina}.html`)
+  fetch(`https://atentus.com.br:3090/pages/${pagina}.html`)
     .then(response => {
       if (!response.ok) {
         throw new Error(`Arquivo não encontrado: pages/${pagina}.html (${response.status})`);
@@ -176,7 +176,9 @@ if (pagina !== 'sair') {
       const currentLink = document.querySelector(`[data-page="${pagina}"]`);
       if (currentLink) {
         currentLink.classList.add('active');
-      }
+      }else if (pagina === 'historico') {
+  iniciarAtualizacaoAutomatica(); // Inicia o carregamento automático
+}
       
       // Inicializar funcionalidades específicas da página
       if (pagina === 'login') {
@@ -410,7 +412,7 @@ function configurarConfirmacaoEmail() {
       
       try {
         // Buscar usuários via servidor
-        const response = await fetch('https://atentus.com.br:3080/listar-usuarios', {
+        const response = await fetch('https://atentus.com.br:3090/listar-usuarios', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json'
@@ -526,7 +528,7 @@ function configurarAlteracaoSenha() {
       
       try {
         // Alterar senha via servidor
-        const response = await fetch('https://atentus.com.br:3080/alterar-senha', {
+        const response = await fetch('https://atentus.com.br:3090/alterar-senha', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json'
@@ -603,6 +605,132 @@ function inicializarPaginaConfirm() {
 function inicializarPaginaSenha() {
   configurarAlteracaoSenha();
 }
+
+//HISTORICO
+let intervaloBusca = null;
+
+const carregarHistorico = async () => {
+  try {
+    console.log('[Histórico] Buscando dados...');
+    const response = await fetch('https://atentus.com.br:3090/historico-envios');
+    
+    if (!response.ok) {
+      throw new Error(`Erro na requisição: ${response.status}`);
+    }
+    
+    const historico = await response.json();
+    console.log('[Histórico] Dados recebidos:', historico.length, 'registros');
+    
+    preencherFiltroData(historico);
+    preencherTabela(historico);
+    atualizarUltimaAtualizacao();
+    
+  } catch (erro) {
+    console.error('[Histórico] Erro:', erro);
+    mostrarMensagemErro('Erro ao carregar histórico. Tente recarregar a página.');
+  }
+};
+
+const preencherFiltroData = (dados) => {
+  const selectFiltro = document.getElementById('historico__filtro__data');
+  if (!selectFiltro) return;
+
+  // Limpa o select
+  selectFiltro.innerHTML = '';
+
+  // Adiciona opção padrão (ver tudo)
+  const opcaoTodos = document.createElement('option');
+  opcaoTodos.value = '';
+  opcaoTodos.textContent = 'Todas as datas';
+  selectFiltro.appendChild(opcaoTodos);
+
+  // Extrai e ordena datas únicas (mais recentes primeiro)
+  const datasUnicas = [...new Set(dados.map(item => item.data))].sort((a, b) => {
+    const [diaA, mesA, anoA] = a.split('/').map(Number);
+    const [diaB, mesB, anoB] = b.split('/').map(Number);
+    return new Date(anoB, mesB - 1, diaB) - new Date(anoA, mesA - 1, diaA);
+  });
+
+  // Adiciona as opções ao select
+  datasUnicas.forEach(data => {
+    const opcao = document.createElement('option');
+    opcao.value = data;
+    opcao.textContent = data;
+    selectFiltro.appendChild(opcao);
+  });
+
+  // Evento de mudança: filtrar a tabela quando mudar a data
+  selectFiltro.addEventListener('change', () => {
+    const dataSelecionada = selectFiltro.value;
+    const dadosFiltrados = dataSelecionada
+      ? dados.filter(item => item.data === dataSelecionada)
+      : dados;
+
+    preencherTabela(dadosFiltrados);
+  });
+};
+
+const preencherTabela = (dados) => {
+  const tbody = document.getElementById('tabela_historico_envios');
+  
+  if (!tbody) {
+    console.error('[Histórico] Tabela não encontrada no DOM');
+    return;
+  }
+
+  tbody.innerHTML = '';
+  
+  if (!dados || dados.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="3">Nenhum envio registrado</td></tr>';
+    return;
+  }
+
+  // Ordenar por data (mais recente primeiro)
+  dados.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+
+  // Preencher tabela
+  dados.forEach(item => {
+    const linha = document.createElement('tr');
+    linha.innerHTML = `
+      <td>${item.data || '--/--/----'}</td>
+      <td>${item.hora || '--:--'}</td>
+      <td>
+        <span class="status">${item.status === 'sucesso' ? '✅' : '❌'}</span>
+        ${item.posicao ? `<span class="posicao">(${item.posicao})</span>` : ''}
+        <div class="mensagem">${item.mensagem || ''}</div>
+      </td>
+    `;
+    tbody.appendChild(linha);
+  });
+};
+
+const mostrarMensagemErro = (mensagem) => {
+  const tbody = document.getElementById('tabela_historico_envios');
+  if (tbody) {
+    tbody.innerHTML = `<tr><td colspan="3" class="erro">${mensagem}</td></tr>`;
+  }
+};
+
+const iniciarAtualizacaoAutomatica = () => {
+  pararAtualizacaoAutomatica();
+  intervaloBusca = setInterval(carregarHistorico, 30000); // 30 segundos
+  console.log('[Histórico] Atualização automática iniciada');
+};
+
+const pararAtualizacaoAutomatica = () => {
+  if (intervaloBusca) {
+    clearInterval(intervaloBusca);
+    intervaloBusca = null;
+  }
+};
+
+const atualizarUltimaAtualizacao = () => {
+  const elemento = document.getElementById('ultima-atualizacao');
+  if (elemento) {
+    elemento.textContent = `Última atualização: ${new Date().toLocaleTimeString()}`;
+  }
+};
+
 
 // Inicilizar Elementos da página
 function inicializarElementosPagina() {
@@ -699,7 +827,7 @@ function inicializarElementosPagina() {
       formData.append('arquivo', file);
       formData.append('diaSemana', diaSemana);
 
-      const response = await fetch('https://atentus.com.br:3080/upload', {
+      const response = await fetch('https://atentus.com.br:3090/upload', {
         method: 'POST',
         body: formData
       });
@@ -741,7 +869,7 @@ function inicializarElementosPagina() {
         if (campo) campo.textContent = texto;
       }
 
-      fetch('https://atentus.com.br:3080/salvar', {
+      fetch('https://atentus.com.br:3090/salvar', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(dados)
@@ -826,7 +954,7 @@ if (document.getElementById('qrcode')) {
 
   async function checkStatus() {
     try {
-      const res = await fetch('https://atentus.com.br:3080/status');
+      const res = await fetch('https://atentus.com.br:3090/status');
       const data = await res.json();
 
       if (data.connected) {
@@ -888,7 +1016,7 @@ if (document.getElementById('qrcode')) {
     loading.style.display = 'block';
 
     try {
-      const res = await fetch('https://atentus.com.br:3080/restart', { method: 'POST' });
+      const res = await fetch('https://atentus.com.br:3090/restart', { method: 'POST' });
       const data = await res.json();
 
       if (data.message) {
@@ -918,7 +1046,7 @@ if (document.getElementById('qrcode')) {
     loading.style.display = 'block';
 
     try {
-      const res = await fetch('https://atentus.com.br:3080/logout', { method: 'POST' });
+      const res = await fetch('https://atentus.com.br:3090/logout', { method: 'POST' });
       const data = await res.json();
       statusText.textContent = data.message;
       title.textContent = '❎ Desconectado!';
@@ -961,11 +1089,12 @@ if (btnConfirmar && listaEl && statusEl) {
   const textoOriginalBotao = btnConfirmar.innerText;
 
   function carregarHorarios() {
-    fetch('https://atentus.com.br:3080/horarios')
+    fetch('https://atentus.com.br:3090/horarios')
       .then(res => res.json())
       .then(data => {
         const lista = data.horarios || [];
-        listaEl.innerText = lista.map(h => `${h}:00`).join(' | ');
+        const horariosOriginais = lista.map(h => (h - 3 + 24) % 24);
+        listaEl.innerText = horariosOriginais.map(h => `${h}:00`).join(' | ');
       })
       .catch(() => {
         listaEl.innerText = 'Erro ao carregar horários';
@@ -988,7 +1117,7 @@ if (btnConfirmar && listaEl && statusEl) {
     btnConfirmar.disabled = true;
     btnConfirmar.innerText = 'Salvando...';
 
-    fetch('https://atentus.com.br:3080/horarios', {
+    fetch('https://atentus.com.br:3090/horarios', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ horarios: unicos })
@@ -1020,7 +1149,7 @@ if (document.getElementById('confirmar_grupos')) {
   tabelaDireita.innerHTML = '';
 
   // Busca os grupos do backend
-  fetch('https://atentus.com.br:3080/grupos')
+  fetch('https://atentus.com.br:3090/grupos')
     .then(res => res.json())
     .then(grupos => {
       grupos.forEach(grupo => {
@@ -1087,7 +1216,7 @@ if (document.getElementById('confirmar_grupos')) {
       nome: tr.children[1].textContent
     }));
 
-    fetch('https://atentus.com.br:3080/grupos', {
+    fetch('https://atentus.com.br:3090/grupos', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(gruposSelecionados)
@@ -1107,7 +1236,7 @@ if (document.getElementById('confirmar_grupos')) {
 
 //meusanuncios
 if (document.getElementById('tabela_grupos_check')) {
-  fetch('https://atentus.com.br:3080/gruposcheck')
+  fetch('https://atentus.com.br:3090/gruposcheck')
     .then(res => res.json())
     .then(grupos => {
       const tbody = document.getElementById('tabela_grupos_check');
@@ -1140,7 +1269,7 @@ if (document.getElementById('previewImagem_chk')) {
   if (selectDia && imagem && texto) {
     // Função para carregar prévia
     const carregarPreview = (dia) => {
-      fetch(`https://atentus.com.br:3080/anuncio/${dia}`)
+      fetch(`https://atentus.com.br:3090/anuncio/${dia}`)
         .then(res => res.json())
         .then(data => {
           
@@ -1196,7 +1325,7 @@ if (document.getElementById('previewImagem_chk')) {
         return;
       }
 
-      fetch('https://atentus.com.br:3080/copiar-anuncio', {
+      fetch('https://atentus.com.br:3090/copiar-anuncio', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
@@ -1237,7 +1366,7 @@ if (document.getElementById('btn-apagar-anuncio')){
   }
 
   try {
-    const resposta = await fetch('https://atentus.com.br:3080/apagar-anuncio', {
+    const resposta = await fetch('https://atentus.com.br:3090/apagar-anuncio', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ dia: diaSelecionado })
@@ -1264,7 +1393,7 @@ if (document.getElementById('btn-apagar-todos')){
   }
 
   try {
-    const resposta = await fetch('https://atentus.com.br:3080/apagar-todos-anuncios', {
+    const resposta = await fetch('https://atentus.com.br:3090/apagar-todos-anuncios', {
       method: 'POST'
     });
 
@@ -1278,6 +1407,40 @@ if (document.getElementById('btn-apagar-todos')){
   }
 });
 };
+
+//Histórico
+
+if (document.getElementById('tabela_historico_envios')) {
+  console.log('[Histórico] Inicializando...');
+  carregarHistorico();
+  iniciarAtualizacaoAutomatica();
+}
+// Botão para apagar histórico
+if (document.getElementById('btn-apagar-historico')) {
+  document.getElementById('btn-apagar-historico').addEventListener('click', async () => {
+    if (confirm('Tem certeza que deseja apagar todo o histórico de envios?')) {
+      try {
+        const response = await fetch('https://atentus.com.br:3090/delete-historico-envios', {
+          method: 'DELETE'
+        });
+
+        if (!response.ok) throw new Error('Erro ao apagar histórico');
+
+        const resultado = await response.json();
+
+        if (resultado.sucesso) {
+          alert('Histórico apagado com sucesso.');
+          carregarHistorico(); // recarrega a tabela
+        } else {
+          alert('Falha ao apagar histórico.');
+        }
+      } catch (erro) {
+        console.error('[Apagar Histórico] Erro:', erro);
+        alert('Erro ao apagar histórico. Verifique o console.');
+      }
+    }
+  });
+}
 
 
   // if (main.innerHTML.includes("id_exclusivo_da_nova_pagina")) { ... }

@@ -14,7 +14,7 @@ const bcrypt = require('bcryptjs');
 
 
 const app = express();
-const PORT = 3090;
+const PORT = 3080;
 
 app.use(cors({
   origin: 'https://atentus.com.br',
@@ -72,8 +72,17 @@ async function senhaHash(password, saltRounds = 10) {
 function lerHorarios() {
   const filePath = path.join(__dirname, 'horarios.txt');
   if (!fs.existsSync(filePath)) return [];
+
   const content = fs.readFileSync(filePath, 'utf-8');
-  return content.split(',').map(h => parseInt(h.trim())).filter(h => !isNaN(h));
+  const horariosOriginais = content.split(',').map(h => parseInt(h.trim())).filter(h => !isNaN(h));
+
+  // Converte cada horário para +3 %24
+  const horariosConvertidos = horariosOriginais.map(hora => (hora + 3) % 24);
+
+  console.log('📋 Horários do arquivo:', horariosOriginais);
+  console.log('🔄 Horários convertidos (+3):', horariosConvertidos);
+
+  return horariosConvertidos;
 }
 
 function lerGruposDestinatarios() {
@@ -170,45 +179,86 @@ async function logoutClient() {
 }
 
 function escutarGrupos() {
-  client.on('message', async msg => {
-    const from = msg.from;
-    if (from.endsWith('@g.us')) {
-      const chat = await msg.getChat();
-      const nomeGrupo = chat.name;
-      const registro = `${from} - ${nomeGrupo}`;
-      const arquivo = path.join(__dirname, 'grupos_scan.txt');
-      const existente = fs.existsSync(arquivo) ? fs.readFileSync(arquivo, 'utf-8') : '';
-      if (!existente.includes(from)) {
-        fs.appendFileSync(arquivo, registro + '\n', 'utf-8');
-        console.log(`📁 Grupo salvo: ${registro}`);
+  // Função auxiliar para processar e salvar o grupo
+  async function processarGrupo(msg) {
+    try {
+      // Verifica se a mensagem é de um grupo ou para um grupo
+      const isFromGroup = msg.from.endsWith('@g.us');
+      const isToGroup = msg.to && msg.to.endsWith('@g.us');
+      
+      if (isFromGroup || isToGroup) {
+        const grupoId = isFromGroup ? msg.from : msg.to;
+        const chat = await msg.getChat();
+        const nomeGrupo = chat.name;
+        const registro = `${grupoId} - ${nomeGrupo}`;
+        const arquivo = path.join(__dirname, 'grupos_scan.txt');
+        
+        // Lê arquivo existente ou cria string vazia
+        const existente = fs.existsSync(arquivo) ? fs.readFileSync(arquivo, 'utf-8') : '';
+        
+        // Verifica se o grupo já está registrado
+        if (!existente.includes(grupoId)) {
+          fs.appendFileSync(arquivo, registro + '\n', 'utf-8');
+          console.log(`📁 Grupo salvo: ${registro}`);
+        }
       }
+    } catch (error) {
+      console.error('Erro ao processar mensagem do grupo:', error);
     }
+  }
+
+  // Escuta mensagens RECEBIDAS nos grupos
+  client.on('message', async msg => {
+    await processarGrupo(msg);
+  });
+
+  // Escuta mensagens ENVIADAS POR VOCÊ nos grupos
+  client.on('message_create', async msg => {
+    await processarGrupo(msg);
   });
 }
 
 function agendarEnvios() {
   console.log('📅 Função de agendamento registrada');
+  const enviosFilePath = path.join(__dirname, 'envios_registrados.txt');
   let enviadosHoje = new Set();
 
+  // Carregar envios já realizados
+  if (fs.existsSync(enviosFilePath)) {
+    const content = fs.readFileSync(enviosFilePath, 'utf-8');
+    content.split('\n').filter(Boolean).forEach(line => enviadosHoje.add(line));
+    console.log('📌 Envios já registrados carregados:', Array.from(enviadosHoje));
+  }
+
+  // Agendamento para limpar registros à meia-noite
+  cron.schedule('0 0 * * *', () => {
+    enviadosHoje.clear();
+    if (fs.existsSync(enviosFilePath)) {
+      fs.unlinkSync(enviosFilePath);
+    }
+    console.log('🔄 Registros de envios do dia anterior limpos.');
+  });
+
+  // Agendamento principal
   cron.schedule('0 * * * *', async () => {
-    console.log('🕒 Agendamento ativado!');
+    console.log('\n🕒 Agendamento ativado! Verificando envios...');
+    console.log('📌 Envios já realizados hoje:', Array.from(enviadosHoje));
+    
     const agora = new Date();
     const hora = agora.getHours();
+    
     function diaSemana() {
       let day = agora.getDay();
-      if (hora >= 0 && hora <= 1){
+      if (hora >= 0 && hora <= 1) {
         day = day - 1;
-        if (day < 0){
-          day = 6;
-        }
-      }else{
-        day = day;
+        if (day < 0) day = 6;
       }
       return day;
     }
-    const dia = diaSemana(); // 0 = domingo
-
-    console.log(`📆 Dia: ${dia} | Hora: ${hora}`);
+    
+    const dia = diaSemana();
+    console.log(`📆 Data/hora atual: ${agora.toLocaleString()}`);
+    console.log(`📆 Dia da semana: ${dia} (0=Domingo) | Hora atual: ${hora}`);
 
     if (dia === 0) {
       console.log('⛔ Domingo. Nenhum envio será feito.');
@@ -232,16 +282,16 @@ function agendarEnvios() {
     const nomeImagemBase = imagemMap[dia];
     const nomeMensagem = diaMap[dia];
 
-        if (!nomeImagemBase || !nomeMensagem) {
+    if (!nomeImagemBase || !nomeMensagem) {
       console.log('⚠️ Dia não mapeado corretamente:', dia);
       return;
     }
 
     const mensagemMap = lerMensagensDataTxt();
-    console.log('📜 Mapa de mensagens:', mensagemMap);
+    console.log('📜 Mapa de mensagens:', Object.keys(mensagemMap));
 
     const texto = mensagemMap[nomeMensagem];
-    console.log(`📄 Texto para ${nomeMensagem}:`, texto);
+    console.log(`📄 Texto para ${nomeMensagem}:`, texto.substring(0, 50) + '...');
 
     const exts = ['.jpg', '.png'];
     let caminhoImagem = null;
@@ -257,9 +307,9 @@ function agendarEnvios() {
     }
 
     if (!caminhoImagem) {
-      console.log(`🖼️ Imagem não encontrada para ${nomeImagemBase}` );
+      console.log(`🖼️ Imagem não encontrada para ${nomeImagemBase}`);
     } else {
-      console.log(`🖼️ Imagem encontrada: ${caminhoImagem}` );
+      console.log(`🖼️ Imagem encontrada: ${caminhoImagem}`);
     }
 
     if (!caminhoImagem || !texto) {
@@ -270,19 +320,102 @@ function agendarEnvios() {
     try {
       const media = MessageMedia.fromFilePath(caminhoImagem);
       const grupos = lerGruposDestinatarios();
-      console.log(`📣 Enviando para grupos:, \n${grupos}`);
+      
+      if (grupos.length === 0) {
+        console.log('⚠️ Nenhum grupo destinatário configurado.');
+        return;
+      }
+      
+      console.log(`📣 Preparando envio para ${grupos.length} grupos com intervalo de 2 segundos...`);
+      const now = new Date();
+      now.setHours(now.getHours() - 3);
+      const horaMsg = now.toLocaleString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+      const dataMsg = now.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' });
 
-      for (const grupoId of grupos) {
+      let historicoEnvios = [];
+
+      // Função para salvar o histórico - CORRIGIDA
+      const salvarHistorico = async (dados) => {
         try {
-          await client.sendMessage(grupoId, media, { caption: texto });
-          await new Promise(resolve => setTimeout(resolve, 2000));
-          console.log(`✅ Mensagem enviada para ${grupoId} (${nomeMensagem})`);
-        } catch (erroEnvio) {
-          console.error(`❌ Erro ao enviar para ${grupoId}:`, erroEnvio.message);
+          const caminhoArquivo = path.join(__dirname, 'historico-envios.json');
+      
+          // Carregar histórico existente
+          try {
+            const arquivoExistente = await fsPromises.readFile(caminhoArquivo, 'utf8');
+            historicoEnvios = JSON.parse(arquivoExistente);
+          } catch {
+            // Arquivo não existe ainda, começar com array vazio
+            historicoEnvios = [];
+          }
+          
+          // Adicionar novo registro
+          historicoEnvios.push(dados);
+          
+          // Salvar de volta no arquivo
+          await fsPromises.writeFile(caminhoArquivo, JSON.stringify(historicoEnvios, null, 2));
+        } catch (erro) {
+          console.error('Erro ao salvar histórico:', erro);
         }
+      };
+
+      // Função auxiliar para enviar com delay
+      const enviarComDelay = async (grupoId, index) => {
+        const inicioEnvio = new Date();
+        inicioEnvio.setHours(inicioEnvio.getHours() - 3);
+        const horaMsg = inicioEnvio.toLocaleString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+        const dataMsg = inicioEnvio.toLocaleDateString('pt-BR');
+        const chat = await client.getChatById(grupoId);
+        const nomeGrupo = chat.name;
+        try {
+          console.log(`\n⏳ Enviando para grupo ${index + 1}/${grupos.length}: ${grupoId}`);
+          await client.sendMessage(grupoId, media, { caption: texto });
+          console.log(`✅ Mensagem enviada com sucesso para ${nomeGrupo} em ${horaMsg} (${dataMsg})`);
+          
+          // Registrar sucesso
+          await salvarHistorico({
+            id: Date.now() + Math.random(), // ID único
+            grupoId,
+            status: 'sucesso',
+            hora: horaMsg,
+            data: dataMsg,
+            nome: nomeGrupo,
+            timestamp: inicioEnvio.toISOString(),
+            posicao: `${index + 1}/${grupos.length}`,
+            mensagem: `Mensagem enviada com sucesso para<br>${nomeGrupo}`
+          });
+
+          // Aguardar 2 segundos, exceto após o último envio
+          if (index < grupos.length - 1) {
+            console.log('⏱️ Aguardando 2 segundos antes do próximo envio...');
+            await new Promise(resolve => setTimeout(resolve, 2000));
+          }
+        } catch (erroEnvio) {
+          console.error(`❌ Erro ao enviar para${grupoId}:`, erroEnvio.message);
+
+          await salvarHistorico({
+            id: Date.now() + Math.random(),
+            grupoId,
+            status: 'erro',
+            hora: horaMsg,
+            data: dataMsg,
+            nome: nomeGrupo,
+            timestamp: inicioEnvio.toISOString(),
+            posicao: `${index + 1}/${grupos.length}`,
+            mensagem: `Erro ao enviar para<br>${nomeGrupo}:<br>${erroEnvio.message}`,
+            erro: erroEnvio.message
+          });
+        }
+      };
+
+      // Processar envios em série com delay
+      for (let i = 0; i < grupos.length; i++) {
+        await enviarComDelay(grupos[i], i);
       }
 
-      enviadosHoje.add(chaveEnvio); // marca como enviado
+      // Registrar envio somente após todos os grupos serem processados
+      enviadosHoje.add(chaveEnvio);
+      fs.appendFileSync(enviosFilePath, chaveEnvio + '\n', 'utf-8');
+      console.log(`\n📝 Todos os envios concluídos. Registrado: ${chaveEnvio}`);
     } catch (erroGeral) {
       console.error(`❌ Erro no processo de envio para ${nomeMensagem}:`, erroGeral.message);
     }
@@ -910,6 +1043,53 @@ app.get('/usuarios', async (req, res) => {
   }
 });
 
+//ROTAS DE HISTORICO
+
+app.get('/historico-envios', async (req, res) => {
+  console.log('📡 Requisição recebida para /historico-envios');
+  try {
+    const caminhoArquivo = path.join(__dirname, 'historico-envios.json');
+    console.log('📁 Caminho do arquivo:', caminhoArquivo);
+    
+    // Verificar se arquivo existe usando fs.promises
+    try {
+      await fs.promises.access(caminhoArquivo);
+      console.log('📄 Arquivo existe');
+    } catch {
+      console.log('📄 Arquivo não encontrado');
+      return res.status(404).json({ erro: 'Arquivo de histórico não encontrado' });
+    }
+    
+    // Ler arquivo
+    const dados = await fs.promises.readFile(caminhoArquivo, 'utf8');
+    console.log('📊 Dados lidos:', dados.length, 'caracteres');
+    
+    // Parsear JSON
+    const historico = JSON.parse(dados);
+    console.log('✅ JSON parseado com', historico.length, 'itens');
+    
+    // Enviar resposta
+    res.json(historico);
+  } catch (erro) {
+    console.error('❌ Erro no servidor:', erro);
+    res.status(500).json({ 
+      erro: 'Erro ao carregar histórico',
+      detalhes: erro.message 
+    });
+  }
+});
+
+// Limpar histórico antigo (opcional)
+app.delete('/delete-historico-envios', async (req, res) => {
+  try {
+    const caminhoArquivo = path.join(__dirname, 'historico-envios.json');
+    await fs.promises.writeFile(caminhoArquivo, JSON.stringify([]));
+    res.json({ sucesso: true });
+  } catch (erro) {
+    console.error('❌ Erro ao apagar histórico:', erro);
+    res.status(500).json({ erro: 'Erro ao limpar histórico' });
+  }
+});
 
 const httpsServer = https.createServer(credentials, app);
 httpsServer.listen(PORT, () => {
