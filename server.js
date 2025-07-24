@@ -14,7 +14,22 @@ const bcrypt = require('bcryptjs');
 
 
 const app = express();
-const PORT = 3080;
+const PORT = 3090;
+
+const cache = {
+  horarios: null,
+  grupos: null,
+  mensagens: null,
+  historico: null,
+  lastUpdate: {
+    horarios: 0,
+    grupos: 0,
+    mensagens: 0,
+    historico: 0
+  }
+};
+
+const CACHE_TTL = 60000;
 
 app.use(cors({
   origin: 'https://atentus.com.br',
@@ -70,34 +85,71 @@ async function senhaHash(password, saltRounds = 10) {
 }
 
 function lerHorarios() {
+  // Verificar se tem cache válido
+  const now = Date.now();
+  if (cache.horarios && (now - cache.lastUpdate.horarios) < CACHE_TTL) {
+    console.log('📋 Usando horários do cache');
+    return cache.horarios;
+  }
+
+  // Se não tem cache ou expirou, ler do arquivo (CÓDIGO ORIGINAL)
   const filePath = path.join(__dirname, 'horarios.txt');
   if (!fs.existsSync(filePath)) return [];
 
   const content = fs.readFileSync(filePath, 'utf-8');
   const horariosOriginais = content.split(',').map(h => parseInt(h.trim())).filter(h => !isNaN(h));
 
-  // Converte cada horário para +3 %24
+  // Converte cada horário para +3 %24 (SEU CÓDIGO ORIGINAL)
   const horariosConvertidos = horariosOriginais.map(hora => (hora + 3) % 24);
 
   console.log('📋 Horários do arquivo:', horariosOriginais);
   console.log('🔄 Horários convertidos (+3):', horariosConvertidos);
 
+  // 🔥 SALVAR NO CACHE
+  cache.horarios = horariosConvertidos;
+  cache.lastUpdate.horarios = now;
+  console.log('💾 Horários salvos no cache');
+
   return horariosConvertidos;
 }
 
 function lerGruposDestinatarios() {
+  // Verificar cache
+  const now = Date.now();
+  if (cache.grupos && (now - cache.lastUpdate.grupos) < CACHE_TTL) {
+    console.log('👥 Usando grupos do cache');
+    return cache.grupos;
+  }
+
+  // Código original
   const filePath = path.join(__dirname, 'grupos_check.txt');
   if (!fs.existsSync(filePath)) return [];
-  return fs.readFileSync(filePath, 'utf-8')
+  
+  const grupos = fs.readFileSync(filePath, 'utf-8')
     .split('\n')
     .map(l => l.split('|')[0]?.trim())
     .filter(id => id && id.endsWith('@g.us'));
+
+  // 🔥 SALVAR NO CACHE
+  cache.grupos = grupos;
+  cache.lastUpdate.grupos = now;
+  console.log('💾 Grupos salvos no cache');
+
+  return grupos;
 }
 
-
 function lerMensagensDataTxt() {
+  // Verificar cache
+  const now = Date.now();
+  if (cache.mensagens && (now - cache.lastUpdate.mensagens) < CACHE_TTL) {
+    console.log('💬 Usando mensagens do cache');
+    return cache.mensagens;
+  }
+
+  // Código original
   const filePath = path.join(__dirname, 'data.txt');
   if (!fs.existsSync(filePath)) return {};
+  
   const linhas = fs.readFileSync(filePath, 'utf-8').split('\n');
   const mapa = {};
   for (const linha of linhas) {
@@ -106,13 +158,47 @@ function lerMensagensDataTxt() {
       mapa[dia.trim()] = msg.join(':').trim().replace(/\\n/g, '\n');
     }
   }
+
+  // 🔥 SALVAR NO CACHE
+  cache.mensagens = mapa;
+  cache.lastUpdate.mensagens = now;
+  console.log('💾 Mensagens salvas no cache');
+
   return mapa;
 }
 
+function limparCache(tipo) {
+  if (tipo === 'horarios') {
+    cache.horarios = null;
+    cache.lastUpdate.horarios = 0;
+    console.log('🧹 Cache de horários limpo');
+  } else if (tipo === 'grupos') {
+    cache.grupos = null;
+    cache.lastUpdate.grupos = 0;
+    console.log('🧹 Cache de grupos limpo');
+  } else if (tipo === 'mensagens') {
+    cache.mensagens = null;
+    cache.lastUpdate.mensagens = 0;
+    console.log('🧹 Cache de mensagens limpo');
+  } else if (tipo === 'historico') {
+    cache.historico = null;
+    cache.lastUpdate.historico = 0;
+    console.log('🧹 Cache de histórico limpo');
+  } else if (tipo === 'tudo') {
+    cache.horarios = null;
+    cache.grupos = null;
+    cache.mensagens = null;
+    cache.historico = null;
+    cache.lastUpdate = { horarios: 0, grupos: 0, mensagens: 0, historico: 0 };
+    console.log('🧹 Todo cache limpo');
+  }
+}
+
+
 async function startClient() {
   client = new Client({
-    authStrategy: new LocalAuth({ clientId: 'atentusadv' }),
-    puppeteer: {
+  authStrategy: new LocalAuth({ clientId: 'atentusadv' }),
+  puppeteer: {
     headless: true,
     args: [
       '--no-sandbox',
@@ -120,8 +206,6 @@ async function startClient() {
       '--disable-dev-shm-usage',
       '--disable-accelerated-2d-canvas',
       '--disable-gpu',
-      '--no-zygote',
-      '--single-process',
       '--disable-background-networking',
       '--disable-background-timer-throttling',
       '--disable-backgrounding-occluded-windows',
@@ -132,11 +216,17 @@ async function startClient() {
       '--metrics-recording-only',
       '--mute-audio',
       '--no-first-run',
-      '--safebrowsing-disable-auto-update'
-    ]
+      '--safebrowsing-disable-auto-update',
+      '--memory-pressure-off',
+      '--max-old-space-size=512', // Limitar memória
+      '--disable-features=TranslateUI,BlinkGenPropertyTrees'
+    ],
+    executablePath: null, // Deixar Puppeteer escolher
+    slowMo: 100, // Adicionar delay entre ações
+    defaultViewport: { width: 800, height: 600 }, // Viewport menor
+    devtools: false
   }
-  });
-
+});
   client.on('qr', async qr => {
     qrBase64 = await qrcode.toDataURL(qr);
     isConnected = false;
@@ -336,27 +426,49 @@ function agendarEnvios() {
 
       // Função para salvar o histórico - CORRIGIDA
       const salvarHistorico = async (dados) => {
-        try {
-          const caminhoArquivo = path.join(__dirname, 'historico-envios.json');
+  try {
+    // Verificar cache
+    const now = Date.now();
+    let historicoAtual;
+    
+    if (cache.historico && (now - cache.lastUpdate.historico) < CACHE_TTL) {
+      console.log('📋 Usando histórico do cache');
+      historicoAtual = cache.historico;
+    } else {
+      // Carregar histórico do arquivo
+      const caminhoArquivo = path.join(__dirname, 'historico-envios.json');
       
-          // Carregar histórico existente
-          try {
-            const arquivoExistente = await fsPromises.readFile(caminhoArquivo, 'utf8');
-            historicoEnvios = JSON.parse(arquivoExistente);
-          } catch {
-            // Arquivo não existe ainda, começar com array vazio
-            historicoEnvios = [];
-          }
-          
-          // Adicionar novo registro
-          historicoEnvios.push(dados);
-          
-          // Salvar de volta no arquivo
-          await fsPromises.writeFile(caminhoArquivo, JSON.stringify(historicoEnvios, null, 2));
-        } catch (erro) {
-          console.error('Erro ao salvar histórico:', erro);
-        }
-      };
+      try {
+        const arquivoExistente = await fsPromises.readFile(caminhoArquivo, 'utf8');
+        historicoAtual = JSON.parse(arquivoExistente);
+      } catch {
+        // Arquivo não existe ainda, começar com array vazio
+        historicoAtual = [];
+      }
+      
+      // 🔥 SALVAR NO CACHE
+      cache.historico = historicoAtual;
+      cache.lastUpdate.historico = now;
+      console.log('💾 Histórico carregado e salvo no cache');
+    }
+    
+    // Adicionar novo registro
+    historicoAtual.push(dados);
+    
+    // Atualizar cache com o novo registro
+    cache.historico = historicoAtual;
+    cache.lastUpdate.historico = Date.now();
+    
+    // Salvar de volta no arquivo
+    const caminhoArquivo = path.join(__dirname, 'historico-envios.json');
+    await fsPromises.writeFile(caminhoArquivo, JSON.stringify(historicoAtual, null, 2));
+    
+    console.log('✅ Histórico atualizado no cache e arquivo');
+    
+  } catch (erro) {
+    console.error('Erro ao salvar histórico:', erro);
+  }
+};
 
       // Função auxiliar para enviar com delay
       const enviarComDelay = async (grupoId, index) => {
@@ -500,6 +612,7 @@ app.post('/salvar', (req, res) => {
 
     fs.writeFile(filePath, novoConteudo + '\n', err => {
       if (err) return res.status(500).send('Erro ao salvar dados');
+      limparCache('mensagens');
       res.status(200).send('Dados salvos com sucesso');
     });
   });
@@ -516,6 +629,8 @@ app.post('/horarios', (req, res) => {
   const ordenados = unicos.sort((a, b) => a - b);
 
   fs.writeFileSync(path.join(__dirname, 'horarios.txt'), ordenados.join(','), 'utf-8');
+
+  limparCache('horarios');
 
   res.status(200).json({ message: 'Horários atualizados com sucesso', horarios: ordenados });
 });
@@ -538,6 +653,7 @@ app.get('/grupos', (req, res) => {
       return { id, nome };
     });
 
+
   res.json(grupos);
 });
 
@@ -546,6 +662,8 @@ app.post('/grupos', (req, res) => {
   const grupos = req.body;
   const texto = grupos.map(g => `${g.id} | ${g.nome}`).join('\n');
   fs.writeFileSync('./grupos_check.txt', texto, 'utf-8');
+      limparCache('grupos');
+
   res.json({ message: 'Grupos salvos com sucesso!' });
 });
 
@@ -1070,6 +1188,7 @@ app.get('/historico-envios', async (req, res) => {
     
     // Enviar resposta
     res.json(historico);
+    limparCache('historico');
   } catch (erro) {
     console.error('❌ Erro no servidor:', erro);
     res.status(500).json({ 

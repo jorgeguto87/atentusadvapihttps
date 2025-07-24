@@ -22,7 +22,7 @@ function verificarAutenticacao() {
 // Função para fazer login (agora usando API)
 async function realizarLogin(username, password) {
   try {
-    const response = await fetch('https://atentus.com.br:3090/login', {
+    const response = await fetch('https://atentus.com.br:3040/login', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -65,7 +65,7 @@ async function realizarLogin(username, password) {
 async function realizarCadastroUsuario(login, senha, email) {
   
   try {
-    const response = await fetch('https://atentus.com.br:3090/cadastrar', {
+    const response = await fetch('https://atentus.com.br:3040/cadastrar', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -156,7 +156,7 @@ if (pagina !== 'sair') {
   // Debug: verificar se o arquivo existe
   console.log(`Tentando carregar: pages/${pagina}.html`);
   
-  fetch(`https://atentus.com.br:3090/pages/${pagina}.html`)
+  fetch(`https://atentus.com.br:3040/pages/${pagina}.html`)
     .then(response => {
       if (!response.ok) {
         throw new Error(`Arquivo não encontrado: pages/${pagina}.html (${response.status})`);
@@ -412,7 +412,7 @@ function configurarConfirmacaoEmail() {
       
       try {
         // Buscar usuários via servidor
-        const response = await fetch('https://atentus.com.br:3090/listar-usuarios', {
+        const response = await fetch('https://atentus.com.br:3040/listar-usuarios', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json'
@@ -528,7 +528,7 @@ function configurarAlteracaoSenha() {
       
       try {
         // Alterar senha via servidor
-        const response = await fetch('https://atentus.com.br:3090/alterar-senha', {
+        const response = await fetch('https://atentus.com.br:3040/alterar-senha', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json'
@@ -612,7 +612,7 @@ let intervaloBusca = null;
 const carregarHistorico = async () => {
   try {
     console.log('[Histórico] Buscando dados...');
-    const response = await fetch('https://atentus.com.br:3090/historico-envios');
+    const response = await fetch('https://atentus.com.br:3040/historico-envios');
     
     if (!response.ok) {
       throw new Error(`Erro na requisição: ${response.status}`);
@@ -827,7 +827,7 @@ function inicializarElementosPagina() {
       formData.append('arquivo', file);
       formData.append('diaSemana', diaSemana);
 
-      const response = await fetch('https://atentus.com.br:3090/upload', {
+      const response = await fetch('https://atentus.com.br:3040/upload', {
         method: 'POST',
         body: formData
       });
@@ -869,7 +869,7 @@ function inicializarElementosPagina() {
         if (campo) campo.textContent = texto;
       }
 
-      fetch('https://atentus.com.br:3090/salvar', {
+      fetch('https://atentus.com.br:3040/salvar', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(dados)
@@ -954,7 +954,7 @@ if (document.getElementById('qrcode')) {
 
   async function checkStatus() {
     try {
-      const res = await fetch('https://atentus.com.br:3090/status');
+      const res = await fetch('https://atentus.com.br:3040/status');
       const data = await res.json();
 
       if (data.connected) {
@@ -1016,7 +1016,7 @@ if (document.getElementById('qrcode')) {
     loading.style.display = 'block';
 
     try {
-      const res = await fetch('https://atentus.com.br:3090/restart', { method: 'POST' });
+      const res = await fetch('https://atentus.com.br:3040/restart', { method: 'POST' });
       const data = await res.json();
 
       if (data.message) {
@@ -1046,7 +1046,7 @@ if (document.getElementById('qrcode')) {
     loading.style.display = 'block';
 
     try {
-      const res = await fetch('https://atentus.com.br:3090/logout', { method: 'POST' });
+      const res = await fetch('https://atentus.com.br:3040/logout', { method: 'POST' });
       const data = await res.json();
       statusText.textContent = data.message;
       title.textContent = '❎ Desconectado!';
@@ -1089,7 +1089,7 @@ if (btnConfirmar && listaEl && statusEl) {
   const textoOriginalBotao = btnConfirmar.innerText;
 
   function carregarHorarios() {
-    fetch('https://atentus.com.br:3090/horarios')
+    fetch('https://atentus.com.br:3040/horarios')
       .then(res => res.json())
       .then(data => {
         const lista = data.horarios || [];
@@ -1117,7 +1117,7 @@ if (btnConfirmar && listaEl && statusEl) {
     btnConfirmar.disabled = true;
     btnConfirmar.innerText = 'Salvando...';
 
-    fetch('https://atentus.com.br:3090/horarios', {
+    fetch('https://atentus.com.br:3040/horarios', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ horarios: unicos })
@@ -1149,7 +1149,7 @@ if (document.getElementById('confirmar_grupos')) {
   tabelaDireita.innerHTML = '';
 
   // Busca os grupos do backend
-  fetch('https://atentus.com.br:3090/grupos')
+  fetch('https://atentus.com.br:3040/grupos')
     .then(res => res.json())
     .then(grupos => {
       grupos.forEach(grupo => {
@@ -1216,7 +1216,7 @@ if (document.getElementById('confirmar_grupos')) {
       nome: tr.children[1].textContent
     }));
 
-    fetch('https://atentus.com.br:3090/grupos', {
+    fetch('https://atentus.com.br:3040/grupos', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(gruposSelecionados)
@@ -1236,7 +1236,7 @@ if (document.getElementById('confirmar_grupos')) {
 
 //meusanuncios
 if (document.getElementById('tabela_grupos_check')) {
-  fetch('https://atentus.com.br:3090/gruposcheck')
+  fetch('https://atentus.com.br:3040/gruposcheck')
     .then(res => res.json())
     .then(grupos => {
       const tbody = document.getElementById('tabela_grupos_check');
@@ -1269,7 +1269,7 @@ if (document.getElementById('previewImagem_chk')) {
   if (selectDia && imagem && texto) {
     // Função para carregar prévia
     const carregarPreview = (dia) => {
-      fetch(`https://atentus.com.br:3090/anuncio/${dia}`)
+      fetch(`https://atentus.com.br:3040/anuncio/${dia}`)
         .then(res => res.json())
         .then(data => {
           
@@ -1325,7 +1325,7 @@ if (document.getElementById('previewImagem_chk')) {
         return;
       }
 
-      fetch('https://atentus.com.br:3090/copiar-anuncio', {
+      fetch('https://atentus.com.br:3040/copiar-anuncio', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
@@ -1366,7 +1366,7 @@ if (document.getElementById('btn-apagar-anuncio')){
   }
 
   try {
-    const resposta = await fetch('https://atentus.com.br:3090/apagar-anuncio', {
+    const resposta = await fetch('https://atentus.com.br:3040/apagar-anuncio', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ dia: diaSelecionado })
@@ -1393,7 +1393,7 @@ if (document.getElementById('btn-apagar-todos')){
   }
 
   try {
-    const resposta = await fetch('https://atentus.com.br:3090/apagar-todos-anuncios', {
+    const resposta = await fetch('https://atentus.com.br:3040/apagar-todos-anuncios', {
       method: 'POST'
     });
 
@@ -1420,7 +1420,7 @@ if (document.getElementById('btn-apagar-historico')) {
   document.getElementById('btn-apagar-historico').addEventListener('click', async () => {
     if (confirm('Tem certeza que deseja apagar todo o histórico de envios?')) {
       try {
-        const response = await fetch('https://atentus.com.br:3090/delete-historico-envios', {
+        const response = await fetch('https://atentus.com.br:3040/delete-historico-envios', {
           method: 'DELETE'
         });
 
